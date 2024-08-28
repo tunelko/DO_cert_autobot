@@ -1,2 +1,81 @@
-# DO_cert_autobot
-Integrates DigitalOcean API with Let's encrypt autobot 
+# CertAutoBot
+
+CertAutoBot is an automated tool for managing SSL/TLS certificates using Certbot and DigitalOcean's DNS API. This tool facilitates the creation, renewal, and cleanup of certificates for subdomains, ensuring that the process is automated and efficient.
+
+## Features
+
+- **Automated Certificate Management**: Automatically create, renew, and clean up SSL/TLS certificates using Certbot and DigitalOcean's DNS API.
+- **DNS-01 Challenge**: Uses the DNS-01 challenge method to prove domain ownership.
+- **Support for Subdomains**: Easily handle certificates for subdomains.
+- **Renewal Check**: Verifies if a certificate is due for renewal before attempting to create or renew a certificate.
+
+## Prerequisites
+
+- Python 3.x
+- Certbot
+- DigitalOcean API Token
+- jq (for JSON parsing in bash scripts)
+
+## Installation
+
+1. **Clone the repository**:
+    ```bash
+    git clone https://github.com/tunelko/certautobot.git
+    cd certautobot
+    ```
+
+2. **Set up the environment**:
+    - Ensure that Certbot and the necessary dependencies are installed on your system.
+    - Set the DigitalOcean API token as an environment variable:
+      ```bash
+      export DIGITALOCEAN_API_TOKEN="your_digital_ocean_api_token"
+      ```
+
+3. **Make the scripts executable**:
+    ```bash
+    chmod +x auth-hook.sh
+    chmod +x cleanup-hook.sh
+    ```
+
+## Usage
+
+1. **Run the CertAutoBot script**:
+    ```bash
+    python3 certbot_auto.py
+    ```
+
+2. **Select a Domain**:
+   - The script will fetch the domains from your DigitalOcean account. Choose the appropriate domain.
+
+3. **Choose an Action**:
+   - You can either create a new DNS record or overwrite an existing one.
+
+4. **Check Renewal Eligibility**: (TO-DO)
+   - Before proceeding, the script checks if the certificate for the selected domain can be renewed. If it cannot be renewed, the script will exit.
+
+5. **Certificate Issuance**:
+   - If eligible, Certbot will manage the DNS challenge and issue the certificate.
+
+## Scripts
+
+- **`certbot_auto.py`**: Main script that manages the entire certificate creation/renewal process.
+- **`auth-hook.sh`**: Hook script that creates the necessary DNS TXT record using the DigitalOcean API during the Certbot DNS-01 challenge.
+- **`cleanup-hook.sh`**: Hook script that cleans up the DNS TXT record after the certificate issuance is complete.
+
+## Troubleshooting
+
+- **DNS Propagation Issues**: If Certbot fails due to DNS propagation delays, you may need to increase the sleep duration in the script or manually verify the DNS TXT record before continuing.
+- **Permission Errors**: Ensure that the hook scripts are executable and that Certbot has the necessary permissions to run them.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request or open an issue for any bugs or feature requests.
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- [Certbot](https://certbot.eff.org/) for making certificate management straightforward.
+- [DigitalOcean](https://www.digitalocean.com/) for providing an accessible API to manage DNS records.
