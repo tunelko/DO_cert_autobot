@@ -62,6 +62,54 @@ CertAutoBot is an automated tool for managing SSL/TLS certificates using Certbot
 - **`auth-hook.sh`**: Hook script that creates the necessary DNS TXT record using the DigitalOcean API during the Certbot DNS-01 challenge.
 - **`cleanup-hook.sh`**: Hook script that cleans up the DNS TXT record after the certificate issuance is complete.
 
+## Example output 
+
+```bash
+# python3 certbot_auto.py
+Fetching domains from DigitalOcean...
+Executing API request: GET https://api.digitalocean.com/v2/domains
+1. example.com
+Select a domain: subdomain
+Selected domain: example.com
+1. Create a new record
+2. Overwrite an existing record
+What would you like to do? 1
+Enter the subdomain name (e.g., www, mail): subdomain
+Running Certbot to manage DNS challenge and certificate issuance...
+Executing command: certbot certonly --manual --preferred-challenges=dns --manual-public-ip-logging-ok -d subexample.example.com --manual-auth-hook /root/certautobot/auth-hook.sh --manual-cleanup-hook /root/certautobot/cleanup-hook.sh --non-interactive
+Saving debug log to /var/log/letsencrypt/letsencrypt.log
+Requesting a certificate for subexample.example.com
+Hook '--manual-auth-hook' for subexample.example.com ran with output:
+ DOMAIN: subexample.example.com
+ CERTBOT_DOMAIN: subexample.example.com
+ CERTBOT_VALIDATION: 5gV6zAnr444tqk3ebkBZvjngKYsU7-HjDOhphHEEpn0
+ ROOT_DOMAIN: example.com
+ SUBDOMAIN: subdomain
+ RECORD_NAME: _acme-challenge.subdomain
+ DNS TXT record created successfully.
+Hook '--manual-cleanup-hook' for subexample.example.com ran with output:
+ DOMAIN: subexample.example.com
+ CERTBOT_DOMAIN: subexample.example.com
+ ROOT_DOMAIN: example.com
+ SUBDOMAIN: subdomain
+ RECORD_NAME: _acme-challenge.subdomain
+ DNS TXT record deleted successfully.
+
+Successfully received certificate.
+Certificate is saved at: /etc/letsencrypt/live/subexample.example.com/fullchain.pem
+Key is saved at:         /etc/letsencrypt/live/subexample.example.com/privkey.pem
+This certificate expires on 2024-11-26.
+These files will be updated when the certificate renews.
+Certbot has set up a scheduled task to automatically renew this certificate in the background.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+If you like Certbot, please consider supporting our work by:
+ * Donating to ISRG / Let's Encrypt:   https://letsencrypt.org/donate
+ * Donating to EFF:                    https://eff.org/donate-le
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+```
+
 ## Troubleshooting
 
 - **DNS Propagation Issues**: If Certbot fails due to DNS propagation delays, you may need to increase the sleep duration in the script or manually verify the DNS TXT record before continuing.
