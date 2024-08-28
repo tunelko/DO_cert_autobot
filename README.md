@@ -114,6 +114,7 @@ If you like Certbot, please consider supporting our work by:
 
 - **DNS Propagation Issues**: If Certbot fails due to DNS propagation delays, you may need to increase the sleep duration in the script or manually verify the DNS TXT record before continuing.
 - **Permission Errors**: Ensure that the hook scripts are executable and that Certbot has the necessary permissions to run them.
+- **DigitalOcean API**: Ensure you give Fully Scoped Access to domain (4): create, read, update, delete.
 
 ## 🗨️ Contributing 
 
