@@ -1,4 +1,4 @@
-# CertAutoBot
+# DO-CertAutoBot
 
 CertAutoBot is an automated tool for managing SSL/TLS certificates using Certbot and DigitalOcean's DNS API. This tool facilitates the creation, renewal, and cleanup of certificates for subdomains, ensuring that the process is automated and efficient.
 
