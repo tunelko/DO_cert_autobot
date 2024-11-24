@@ -8,6 +8,8 @@ CertAutoBot is an automated tool for managing SSL/TLS certificates using Certbot
 - **DNS-01 Challenge**: Uses the DNS-01 challenge method to prove domain ownership.
 - **Support for Subdomains**: Easily handle certificates for subdomains.
 - **Renewal Check**: Verifies if a certificate is due for renewal before attempting to create or renew a certificate.
+- **Certificate Expiry Notification**: Check how many days are left before a certificate expires, including subdomains.
+- **Force Renewal Option**: Added an option to force renewal of certificates if needed, even if the certificate is not due for renewal.
 
 ## Prerequisites
 
@@ -49,12 +51,16 @@ CertAutoBot is an automated tool for managing SSL/TLS certificates using Certbot
 
 3. **Choose an Action**:
    - You can either create a new DNS record or overwrite an existing one.
+   - Alternatively, you can revoke an existing certificate or check how many days are left before a certificate expires.
 
-4. **Check Renewal Eligibility**: (TO-DO)
+4. **Check Renewal Eligibility**:
    - Before proceeding, the script checks if the certificate for the selected domain can be renewed. If it cannot be renewed, the script will exit.
 
 5. **Certificate Issuance**:
    - If eligible, Certbot will manage the DNS challenge and issue the certificate.
+
+6. **Force Renewal Option**:
+   - If required, you can force a certificate renewal even if the existing certificate is not yet due for renewal.
 
 ## 😋 Scripts 
 
