@@ -3,6 +3,9 @@ import subprocess
 import requests
 import time
 import dns.resolver
+import OpenSSL
+from datetime import datetime
+import glob
 
 def get_env_var(var_name):
     """Get an environment variable or raise an error if it doesn't exist."""
@@ -63,7 +66,7 @@ def check_dns_propagation(domain):
         print(f"DNS propagation check failed: {e}")
     return False
 
-def finalize_certbot(domain, script_dir):
+def finalize_certbot(domain, script_dir, force_renewal=False):
     """Run certbot to finalize the certificate issuance."""
     certbot_cmd = [
         "certbot", "certonly", "--manual", "--preferred-challenges=dns",
@@ -72,9 +75,48 @@ def finalize_certbot(domain, script_dir):
         "--manual-cleanup-hook", os.path.join(script_dir, "cleanup-hook.sh"),
         "--non-interactive"
     ]
+    if force_renewal:
+        certbot_cmd.append("--force-renewal")
+    
     print(f"Executing command: {' '.join(certbot_cmd)}")
     result = subprocess.run(certbot_cmd, check=True)
     return result.returncode == 0
+
+def revoke_certbot_certificate(domain):
+    """Revoke a Certbot certificate."""
+    certbot_revoke_cmd = [
+        "certbot", "revoke", "--cert-name", domain,
+        "--non-interactive", "--agree-tos"
+    ]
+    print(f"Executing command: {' '.join(certbot_revoke_cmd)}")
+    try:
+        result = subprocess.run(certbot_revoke_cmd, check=True)
+        if result.returncode == 0:
+            print(f"Certificate for domain {domain} successfully revoked.")
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to revoke certificate for domain {domain}: {e}")
+
+def get_certificate_expiry_days(domain):
+    """Get the number of days left before the certificate expires for the domain and its subdomains."""
+    # Search for certificate directories that match the domain pattern
+    cert_paths = glob.glob(f"/etc/letsencrypt/live/{domain}*")
+    if not cert_paths:
+        print(f"Certificate for domain {domain} not found.")
+        return
+
+    for cert_path in cert_paths:
+        try:
+            with open(os.path.join(cert_path, "cert.pem"), "rb") as cert_file:
+                cert_data = cert_file.read()
+                cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert_data)
+                expiry_date = datetime.strptime(cert.get_notAfter().decode("ascii"), "%Y%m%d%H%M%SZ")
+                days_left = (expiry_date - datetime.now()).days
+                domain_name = os.path.basename(cert_path)
+                print(f"Certificate for domain {domain_name} expires in {days_left} days.")
+        except FileNotFoundError:
+            print(f"Certificate for domain {cert_path} not found.")
+        except Exception as e:
+            print(f"An error occurred while checking certificate expiry for {cert_path}: {e}")
 
 def main():
     try:
@@ -88,40 +130,53 @@ def main():
         print("Fetching domains from DigitalOcean...")
         domains = fetch_domains(api_token)
         domain_names = [domain["name"] for domain in domains]
-        selected_domain = get_user_selection(domain_names, "Select a domain:")
-        print(f"Selected domain: {selected_domain}")
 
-        # Step 4: Ask user if they want to create a new record or overwrite an existing one
-        action = get_user_selection(["Create a new record", "Overwrite an existing record"], "What would you like to do?")
+        # Step 4: Ask user what action they would like to perform
+        action = get_user_selection(["Issue a new certificate", "Revoke an existing certificate", "Check certificate expiry"], "What would you like to do?")
 
-        if action == "Overwrite an existing record":
-            # Step 5: Fetch and display the DNS records for the selected domain
-            print(f"Fetching DNS records for {selected_domain}...")
-            domain_records = fetch_domain_records(api_token, selected_domain)
-            record_names = [f"{rec['name']} ({rec['type']})" for rec in domain_records]
-            selected_record = get_user_selection(record_names, "Select a record to overwrite:")
-            record_data = domain_records[record_names.index(selected_record)]
-            record_id = record_data["id"]
-            record_name = record_data["name"]
+        if action == "Issue a new certificate":
+            selected_domain = get_user_selection(domain_names, "Select a domain:")
+            print(f"Selected domain: {selected_domain}")
 
-            # Handle the case where the record is a subdomain or root domain
-            if record_name.startswith("_acme-challenge."):
-                subdomain = record_name[len("_acme-challenge."):]
-            else:
-                subdomain = ""
+            # Step 5: Ask user if they want to create a new record or overwrite an existing one
+            action = get_user_selection(["Create a new record", "Overwrite an existing record"], "What would you like to do?")
 
-        else:  # Creating a new record
-            subdomain = input("Enter the subdomain name (e.g., www, mail): ")
-            record_name = f"_acme-challenge.{subdomain}" if subdomain else "_acme-challenge"
-            record_id = None
+            if action == "Overwrite an existing record":
+                # Step 6: Fetch and display the DNS records for the selected domain
+                print(f"Fetching DNS records for {selected_domain}...")
+                domain_records = fetch_domain_records(api_token, selected_domain)
+                record_names = [f"{rec['name']} ({rec['type']})" for rec in domain_records]
+                selected_record = get_user_selection(record_names, "Select a record to overwrite:")
+                record_data = domain_records[record_names.index(selected_record)]
+                record_id = record_data["id"]
+                record_name = record_data["name"]
 
-        # Step 6: Run Certbot with the hooks to manage the DNS challenge
-        print("Running Certbot to manage DNS challenge and certificate issuance...")
-        full_domain = f"{subdomain}.{selected_domain}" if subdomain else selected_domain
+                # Handle the case where the record is a subdomain or root domain
+                if record_name.startswith("_acme-challenge."):
+                    subdomain = record_name[len("_acme-challenge."):]
+                else:
+                    subdomain = ""
 
-        if not finalize_certbot(full_domain, script_dir):
-            print("Certbot validation failed.")
-            return
+            else:  # Creating a new record
+                subdomain = input("Enter the subdomain name (e.g., www, mail): ")
+                record_name = f"_acme-challenge.{subdomain}" if subdomain else "_acme-challenge"
+                record_id = None
+
+            # Step 7: Run Certbot with the hooks to manage the DNS challenge
+            print("Running Certbot to manage DNS challenge and certificate issuance...")
+            full_domain = f"{subdomain}.{selected_domain}" if subdomain else selected_domain
+
+            if not finalize_certbot(full_domain, script_dir, force_renewal=True):
+                print("Certbot validation failed.")
+                return
+
+        elif action == "Revoke an existing certificate":
+            selected_domain = get_user_selection(domain_names, "Select a domain to revoke its certificate:")
+            revoke_certbot_certificate(selected_domain)
+
+        elif action == "Check certificate expiry":
+            selected_domain = get_user_selection(domain_names, "Select a domain to check certificate expiry:")
+            get_certificate_expiry_days(selected_domain)
 
     except subprocess.CalledProcessError as e:
         print(f"An error occurred: {e.stderr}")
