@@ -134,4 +134,4 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 - [Certbot](https://certbot.eff.org/) for making certificate management straightforward.
 - [DigitalOcean](https://www.digitalocean.com/) for providing an accessible API to manage DNS records.
-- [ChatGPT](https://chatgpt.com/) for help and assist on this piece of sfotware, including this README ;)
+- [ChatGPT](https://chatgpt.com/) for help and assist on this piece of software, including this README ;)
