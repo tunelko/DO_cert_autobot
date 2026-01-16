@@ -23,7 +23,7 @@ fi
 
 # Determine the root domain and subdomain (if any)
 ROOT_DOMAIN=$(echo "$DOMAIN" | awk -F. '{print $(NF-1)"."$NF}')
-SUBDOMAIN=$(echo "$DOMAIN" | sed "s/\.$ROOT_DOMAIN//")
+SUBDOMAIN="${DOMAIN%."$ROOT_DOMAIN"}"
 
 # Correctly set up the name of the TXT record
 if [ "$SUBDOMAIN" = "$ROOT_DOMAIN" ] || [ -z "$SUBDOMAIN" ]; then
