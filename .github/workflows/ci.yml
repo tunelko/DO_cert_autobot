@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pylint requests dnspython pyOpenSSL
+
+      - name: Lint Python code with flake8
+        run: |
+          flake8 certbot_auto.py --max-line-length=120 --ignore=E501,W503
+
+      - name: Lint shell scripts with shellcheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: '.'
+          format: tty
+
+      - name: Validate Python syntax
+        run: |
+          python -m py_compile certbot_auto.py
+
+      - name: Check shell script syntax
+        run: |
+          bash -n auth-hook.sh
+          bash -n cleanup-hook.sh
+
+  security-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
