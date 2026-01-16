@@ -62,13 +62,13 @@
 6. **Force Renewal Option**:
    - If required, you can force a certificate renewal even if the existing certificate is not yet due for renewal.
 
-## 😋 Scripts 
+## Scripts 
 
 - **`certbot_auto.py`**: Main script that manages the entire certificate creation/renewal process.
 - **`auth-hook.sh`**: Hook script that creates the necessary DNS TXT record using the DigitalOcean API during the Certbot DNS-01 challenge.
 - **`cleanup-hook.sh`**: Hook script that cleans up the DNS TXT record after the certificate issuance is complete.
 
-## 🥇 Example output 
+## Example output 
 
 ```bash_session
 # python3 certbot_auto.py
@@ -116,21 +116,21 @@ If you like Certbot, please consider supporting our work by:
 
 ```
 
-## 😡 Troubleshooting 
+## Troubleshooting 
 
 - **DNS Propagation Issues**: If Certbot fails due to DNS propagation delays, you may need to increase the sleep duration in the script or manually verify the DNS TXT record before continuing.
 - **Permission Errors**: Ensure that the hook scripts are executable and that Certbot has the necessary permissions to run them.
 - **DigitalOcean API**: Ensure you give Fully Scoped Access to domain (4): create, read, update, delete.
 
-## 🗨️ Contributing 
+## Contributing 
 
 Contributions are welcome! Please feel free to submit a Pull Request or open an issue for any bugs or feature requests.
 
-## 🧑‍🎨 👩‍🎨 License 
+## License 
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
-## 👯 Acknowledgments 
+## Acknowledgments 
 
 - [Certbot](https://certbot.eff.org/) for making certificate management straightforward.
 - [DigitalOcean](https://www.digitalocean.com/) for providing an accessible API to manage DNS records.
