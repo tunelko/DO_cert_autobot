@@ -1,4 +1,4 @@
-name: CI
+name: DO Cert Autobot CI
 
 on:
   push:
