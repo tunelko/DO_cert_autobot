@@ -1,11 +1,11 @@
 import os
 import subprocess
 import requests
-import time
 import dns.resolver
 import OpenSSL
 from datetime import datetime
 import glob
+
 
 def get_env_var(var_name):
     """Get an environment variable or raise an error if it doesn't exist."""
@@ -13,6 +13,7 @@ def get_env_var(var_name):
     if not value:
         raise ValueError(f"Environment variable {var_name} is not set.")
     return value
+
 
 def fetch_domains(api_token):
     """Fetch the list of domains from DigitalOcean."""
@@ -26,6 +27,7 @@ def fetch_domains(api_token):
     response.raise_for_status()
     return response.json()["domains"]
 
+
 def fetch_domain_records(api_token, domain_name):
     """Fetch the DNS records of a specific domain from DigitalOcean."""
     url = f"https://api.digitalocean.com/v2/domains/{domain_name}/records"
@@ -37,6 +39,7 @@ def fetch_domain_records(api_token, domain_name):
     response = requests.get(url, headers=headers)
     response.raise_for_status()
     return response.json()["domain_records"]
+
 
 def get_user_selection(options, prompt="Select an option:", allow_skip=False):
     """Display a menu and get the user's selection."""
@@ -55,6 +58,7 @@ def get_user_selection(options, prompt="Select an option:", allow_skip=False):
         return get_user_selection(options, prompt, allow_skip)
     return options[choice]
 
+
 def check_dns_propagation(domain):
     """Check if the DNS TXT record has propagated."""
     try:
@@ -65,6 +69,7 @@ def check_dns_propagation(domain):
     except Exception as e:
         print(f"DNS propagation check failed: {e}")
     return False
+
 
 def finalize_certbot(domain, script_dir, force_renewal=False):
     """Run certbot to finalize the certificate issuance."""
@@ -77,10 +82,11 @@ def finalize_certbot(domain, script_dir, force_renewal=False):
     ]
     if force_renewal:
         certbot_cmd.append("--force-renewal")
-    
+
     print(f"Executing command: {' '.join(certbot_cmd)}")
     result = subprocess.run(certbot_cmd, check=True)
     return result.returncode == 0
+
 
 def revoke_certbot_certificate(domain):
     """Revoke a Certbot certificate."""
@@ -95,6 +101,7 @@ def revoke_certbot_certificate(domain):
             print(f"Certificate for domain {domain} successfully revoked.")
     except subprocess.CalledProcessError as e:
         print(f"Failed to revoke certificate for domain {domain}: {e}")
+
 
 def get_certificate_expiry_days(domain):
     """Get the number of days left before the certificate expires for the domain and its subdomains."""
@@ -117,6 +124,7 @@ def get_certificate_expiry_days(domain):
             print(f"Certificate for domain {cert_path} not found.")
         except Exception as e:
             print(f"An error occurred while checking certificate expiry for {cert_path}: {e}")
+
 
 def main():
     try:
@@ -148,7 +156,6 @@ def main():
                 record_names = [f"{rec['name']} ({rec['type']})" for rec in domain_records]
                 selected_record = get_user_selection(record_names, "Select a record to overwrite:")
                 record_data = domain_records[record_names.index(selected_record)]
-                record_id = record_data["id"]
                 record_name = record_data["name"]
 
                 # Handle the case where the record is a subdomain or root domain
@@ -159,8 +166,6 @@ def main():
 
             else:  # Creating a new record
                 subdomain = input("Enter the subdomain name (e.g., www, mail): ")
-                record_name = f"_acme-challenge.{subdomain}" if subdomain else "_acme-challenge"
-                record_id = None
 
             # Step 7: Run Certbot with the hooks to manage the DNS challenge
             print("Running Certbot to manage DNS challenge and certificate issuance...")
@@ -182,6 +187,7 @@ def main():
         print(f"An error occurred: {e.stderr}")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
+
 
 if __name__ == "__main__":
     main()
