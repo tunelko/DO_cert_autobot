@@ -2,6 +2,8 @@ import os
 import subprocess
 import sys
 import shutil
+import argparse
+import re
 import requests
 import dns.resolver
 import OpenSSL
@@ -9,31 +11,100 @@ from datetime import datetime
 import glob
 
 
-def check_prerequisites():
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Automated SSL/TLS certificate management with Certbot and DigitalOcean DNS",
+        epilog="Examples:\n"
+               "  %(prog)s --action renew --domain example.com --subdomain www\n"
+               "  %(prog)s --action renew --domain example.com  # root domain\n"
+               "  %(prog)s --action revoke --domain www.example.com\n"
+               "  %(prog)s --action expiry --domain example.com\n",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument("--action", choices=["renew", "revoke", "expiry"],
+                        help="Action to perform: renew, revoke, or expiry check")
+    parser.add_argument("--domain", type=str,
+                        help="Root domain (e.g., example.com)")
+    parser.add_argument("--subdomain", type=str, default="",
+                        help="Subdomain for certificate (e.g., www, mail). Empty for root domain")
+    return parser.parse_args()
+
+
+def validate_domain(domain):
+    """Validate domain format."""
+    pattern = r'^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+$'
+    if not re.match(pattern, domain):
+        print(f"Error: Invalid domain format: {domain}")
+        sys.exit(1)
+    return True
+
+
+def validate_subdomain(subdomain):
+    """Validate subdomain format."""
+    if not subdomain:
+        return True
+    pattern = r'^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$'
+    if not re.match(pattern, subdomain):
+        print(f"Error: Invalid subdomain format: {subdomain}")
+        sys.exit(1)
+    return True
+
+
+def validate_args(args, valid_domains):
+    """Validate CLI arguments."""
+    if args.action and not args.domain:
+        print("Error: --domain is required when --action is specified")
+        sys.exit(1)
+
+    if args.domain:
+        validate_domain(args.domain)
+        if args.domain not in valid_domains:
+            print(f"Error: Domain '{args.domain}' not found in DigitalOcean account")
+            print(f"Available domains: {', '.join(valid_domains)}")
+            sys.exit(1)
+
+    if args.subdomain:
+        validate_subdomain(args.subdomain)
+
+
+def check_prerequisites(interactive=True):
     """Check that all prerequisites are met before running."""
     if sys.version_info < (3, 0):
         print("Error: Python 3.x is required")
         sys.exit(1)
 
     if not shutil.which("certbot"):
-        answer = input("certbot is not installed. Install it? [y/N]: ")
-        if answer.lower() == 'y':
-            subprocess.run(["sudo", "apt", "install", "-y", "certbot"], check=True)
+        if interactive:
+            answer = input("certbot is not installed. Install it? [y/N]: ")
+            if answer.lower() == 'y':
+                subprocess.run(["sudo", "apt", "install", "-y", "certbot"], check=True)
+            else:
+                sys.exit(1)
         else:
+            print("Error: certbot is not installed")
             sys.exit(1)
 
     if not shutil.which("jq"):
-        answer = input("jq is not installed. Install it? [y/N]: ")
-        if answer.lower() == 'y':
-            subprocess.run(["sudo", "apt", "install", "-y", "jq"], check=True)
+        if interactive:
+            answer = input("jq is not installed. Install it? [y/N]: ")
+            if answer.lower() == 'y':
+                subprocess.run(["sudo", "apt", "install", "-y", "jq"], check=True)
+            else:
+                sys.exit(1)
         else:
+            print("Error: jq is not installed")
             sys.exit(1)
 
     if not os.getenv("DIGITALOCEAN_API_TOKEN"):
-        token = input("DIGITALOCEAN_API_TOKEN not set. Enter token: ")
-        if token:
-            os.environ["DIGITALOCEAN_API_TOKEN"] = token
+        if interactive:
+            token = input("DIGITALOCEAN_API_TOKEN not set. Enter token: ")
+            if token:
+                os.environ["DIGITALOCEAN_API_TOKEN"] = token
+            else:
+                sys.exit(1)
         else:
+            print("Error: DIGITALOCEAN_API_TOKEN environment variable is not set")
             sys.exit(1)
 
 
@@ -156,69 +227,100 @@ def get_certificate_expiry_days(domain):
             print(f"An error occurred while checking certificate expiry for {cert_path}: {e}")
 
 
+def run_cli_mode(args, api_token, script_dir, domain_names):
+    """Run in non-interactive CLI mode."""
+    validate_args(args, domain_names)
+
+    if args.action == "renew":
+        full_domain = f"{args.subdomain}.{args.domain}" if args.subdomain else args.domain
+        print(f"Renewing certificate for: {full_domain}")
+        if not finalize_certbot(full_domain, script_dir, force_renewal=True):
+            print("Certbot validation failed.")
+            sys.exit(1)
+        print("Certificate renewed successfully.")
+
+    elif args.action == "revoke":
+        full_domain = f"{args.subdomain}.{args.domain}" if args.subdomain else args.domain
+        print(f"Revoking certificate for: {full_domain}")
+        revoke_certbot_certificate(full_domain)
+
+    elif args.action == "expiry":
+        print(f"Checking certificate expiry for: {args.domain}")
+        get_certificate_expiry_days(args.domain)
+
+
+def run_interactive_mode(api_token, script_dir, domain_names):
+    """Run in interactive mode."""
+    action = get_user_selection(
+        ["Issue a new certificate", "Revoke an existing certificate", "Check certificate expiry"],
+        "What would you like to do?"
+    )
+
+    if action == "Issue a new certificate":
+        selected_domain = get_user_selection(domain_names, "Select a domain:")
+        print(f"Selected domain: {selected_domain}")
+
+        record_action = get_user_selection(
+            ["Create a new record", "Overwrite an existing record"],
+            "What would you like to do?"
+        )
+
+        if record_action == "Overwrite an existing record":
+            print(f"Fetching DNS records for {selected_domain}...")
+            domain_records = fetch_domain_records(api_token, selected_domain)
+            record_names = [f"{rec['name']} ({rec['type']})" for rec in domain_records]
+            selected_record = get_user_selection(record_names, "Select a record to overwrite:")
+            record_data = domain_records[record_names.index(selected_record)]
+            record_name = record_data["name"]
+
+            if record_name.startswith("_acme-challenge."):
+                subdomain = record_name[len("_acme-challenge."):]
+            else:
+                subdomain = ""
+        else:
+            subdomain = input("Enter the subdomain name (e.g., www, mail): ")
+
+        print("Running Certbot to manage DNS challenge and certificate issuance...")
+        full_domain = f"{subdomain}.{selected_domain}" if subdomain else selected_domain
+
+        if not finalize_certbot(full_domain, script_dir, force_renewal=True):
+            print("Certbot validation failed.")
+            return
+
+    elif action == "Revoke an existing certificate":
+        selected_domain = get_user_selection(domain_names, "Select a domain to revoke its certificate:")
+        revoke_certbot_certificate(selected_domain)
+
+    elif action == "Check certificate expiry":
+        selected_domain = get_user_selection(domain_names, "Select a domain to check certificate expiry:")
+        get_certificate_expiry_days(selected_domain)
+
+
 def main():
-    check_prerequisites()
+    args = parse_args()
+    interactive = not args.action
+
+    check_prerequisites(interactive=interactive)
 
     try:
-        # Step 1: Get the API token from an environment variable
         api_token = get_env_var("DIGITALOCEAN_API_TOKEN")
-
-        # Step 2: Get the current script directory
         script_dir = os.path.dirname(os.path.abspath(__file__))
 
-        # Step 3: Fetch and display the list of domains
         print("Fetching domains from DigitalOcean...")
         domains = fetch_domains(api_token)
         domain_names = [domain["name"] for domain in domains]
 
-        # Step 4: Ask user what action they would like to perform
-        action = get_user_selection(["Issue a new certificate", "Revoke an existing certificate", "Check certificate expiry"], "What would you like to do?")
-
-        if action == "Issue a new certificate":
-            selected_domain = get_user_selection(domain_names, "Select a domain:")
-            print(f"Selected domain: {selected_domain}")
-
-            # Step 5: Ask user if they want to create a new record or overwrite an existing one
-            action = get_user_selection(["Create a new record", "Overwrite an existing record"], "What would you like to do?")
-
-            if action == "Overwrite an existing record":
-                # Step 6: Fetch and display the DNS records for the selected domain
-                print(f"Fetching DNS records for {selected_domain}...")
-                domain_records = fetch_domain_records(api_token, selected_domain)
-                record_names = [f"{rec['name']} ({rec['type']})" for rec in domain_records]
-                selected_record = get_user_selection(record_names, "Select a record to overwrite:")
-                record_data = domain_records[record_names.index(selected_record)]
-                record_name = record_data["name"]
-
-                # Handle the case where the record is a subdomain or root domain
-                if record_name.startswith("_acme-challenge."):
-                    subdomain = record_name[len("_acme-challenge."):]
-                else:
-                    subdomain = ""
-
-            else:  # Creating a new record
-                subdomain = input("Enter the subdomain name (e.g., www, mail): ")
-
-            # Step 7: Run Certbot with the hooks to manage the DNS challenge
-            print("Running Certbot to manage DNS challenge and certificate issuance...")
-            full_domain = f"{subdomain}.{selected_domain}" if subdomain else selected_domain
-
-            if not finalize_certbot(full_domain, script_dir, force_renewal=True):
-                print("Certbot validation failed.")
-                return
-
-        elif action == "Revoke an existing certificate":
-            selected_domain = get_user_selection(domain_names, "Select a domain to revoke its certificate:")
-            revoke_certbot_certificate(selected_domain)
-
-        elif action == "Check certificate expiry":
-            selected_domain = get_user_selection(domain_names, "Select a domain to check certificate expiry:")
-            get_certificate_expiry_days(selected_domain)
+        if interactive:
+            run_interactive_mode(api_token, script_dir, domain_names)
+        else:
+            run_cli_mode(args, api_token, script_dir, domain_names)
 
     except subprocess.CalledProcessError as e:
         print(f"An error occurred: {e.stderr}")
+        sys.exit(1)
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
