@@ -41,25 +41,67 @@
 
 ## Usage
 
-1. **Run the CertAutoBot script**:
-    ```bash
-    python3 certbot_auto.py
-    ```
+### Interactive Mode
 
-2. **Select a Domain**:
+```bash
+python3 certbot_auto.py
+```
+
+### CLI Mode (for cron/automation)
+
+```
+usage: certbot_auto.py [-h] [--action {renew,revoke,expiry}] [--domain DOMAIN]
+                       [--subdomain SUBDOMAIN]
+
+Automated SSL/TLS certificate management with Certbot and DigitalOcean DNS
+
+options:
+  -h, --help            show this help message and exit
+  --action {renew,revoke,expiry}
+                        Action to perform: renew, revoke, or expiry check
+  --domain DOMAIN       Root domain (e.g., example.com)
+  --subdomain SUBDOMAIN
+                        Subdomain for certificate (e.g., www, mail). Empty for root domain
+```
+
+**Examples:**
+
+```bash
+# Renew certificate for subdomain
+python3 certbot_auto.py --action renew --domain example.com --subdomain www
+
+# Renew certificate for root domain
+python3 certbot_auto.py --action renew --domain example.com
+
+# Revoke certificate
+python3 certbot_auto.py --action revoke --domain example.com --subdomain www
+
+# Check certificate expiry
+python3 certbot_auto.py --action expiry --domain example.com
+```
+
+**Cron example (renew monthly):**
+
+```bash
+0 0 1 * * DIGITALOCEAN_API_TOKEN="your_token" /usr/bin/python3 /path/to/certbot_auto.py --action renew --domain example.com --subdomain www
+```
+
+### Interactive Mode Steps
+
+1. **Select a Domain**:
    - The script will fetch the domains from your DigitalOcean account. Choose the appropriate domain.
 
-3. **Choose an Action**:
+2. **Choose an Action**:
    - You can either create a new DNS record or overwrite an existing one.
    - Alternatively, you can revoke an existing certificate or check how many days are left before a certificate expires.
 
-4. **Check Renewal Eligibility**:
+3. **Check Renewal Eligibility**:
    - Before proceeding, the script checks if the certificate for the selected domain can be renewed. If it cannot be renewed, the script will exit.
 
-5. **Certificate Issuance**:
+4. **Certificate Issuance**:
    - If eligible, Certbot will manage the DNS challenge and issue the certificate.
 
-6. **Force Renewal Option**:
+5. **Force Renewal Option**:
    - If required, you can force a certificate renewal even if the existing certificate is not yet due for renewal.
 
 ## Scripts 
