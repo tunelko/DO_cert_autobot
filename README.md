@@ -112,32 +112,79 @@ python3 certbot_auto.py --action expiry --domain example.com
 
 ## Provider Plugin System
 
-The tool supports multiple DNS providers through a plugin system. Currently available:
+The tool supports multiple DNS providers through a plugin system.
 
-- **digitalocean** (default)
+**Available providers:** `digitalocean` (default)
 
-### Adding a New Provider
+### How to Implement Your Own Provider
 
-1. Copy `providers/template.py` to `providers/yourprovider.py`
-2. Implement all abstract methods:
-   - `fetch_domains()` - List domains from provider
-   - `fetch_domain_records(domain)` - List DNS records
-   - `create_txt_record(domain, name, value, ttl)` - Create TXT record
-   - `delete_txt_record(domain, record_id)` - Delete TXT record
-3. Register in `providers/__init__.py`:
-   ```python
-   from .yourprovider import YourProviderProvider
-   PROVIDERS["yourprovider"] = YourProviderProvider
-   ```
-4. Create hooks in `hooks/yourprovider/` (optional, falls back to default hooks)
+#### Step 1: Create the provider file
 
-### Using a Different Provider
+Copy the template to a new file:
 
 ```bash
-python3 certbot_auto.py --provider yourprovider --action renew --domain example.com
+cp providers/template.py providers/cloudflare.py
 ```
 
-Set the appropriate environment variable for your provider (e.g., `YOURPROVIDER_API_TOKEN`).
+#### Step 2: Implement the required methods
+
+Edit your new provider file and implement these methods:
+
+```python
+class CloudflareProvider(DNSProvider):
+    name = "cloudflare"
+    env_token_name = "CLOUDFLARE_API_TOKEN"
+    api_base = "https://api.cloudflare.com/client/v4"
+
+    def fetch_domains(self):
+        """Return list of domain names: ["example.com", "mydomain.org"]"""
+        pass
+
+    def fetch_domain_records(self, domain):
+        """Return list of records: [{"id": 123, "name": "www", "type": "A", "data": "1.2.3.4"}]"""
+        pass
+
+    def create_txt_record(self, domain, record_name, value, ttl=60):
+        """Create TXT record, return {"id": 123} or None on failure"""
+        pass
+
+    def delete_txt_record(self, domain, record_id):
+        """Delete record by ID, return True/False"""
+        pass
+```
+
+#### Step 3: Register the provider
+
+Add to `providers/__init__.py`:
+
+```python
+from .cloudflare import CloudflareProvider
+
+PROVIDERS = {
+    "digitalocean": DigitalOceanProvider,
+    "cloudflare": CloudflareProvider,  # Add your provider
+}
+```
+
+#### Step 4: Use your provider
+
+```bash
+export CLOUDFLARE_API_TOKEN="your_token"
+python3 certbot_auto.py --provider cloudflare --action renew --domain example.com
+```
+
+#### Optional: Custom hooks
+
+Create provider-specific hooks in `hooks/yourprovider/`:
+
+```
+hooks/
+  cloudflare/
+    auth-hook.sh
+    cleanup-hook.sh
+```
+
+If not present, the default hooks will be used.
 
 ## Example output 
 
