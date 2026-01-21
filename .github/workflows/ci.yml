@@ -63,9 +63,19 @@ jobs:
         run: |
           echo "## Bandit Security Scan" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+          bandit -r . -x ./.git --severity-level medium -f json -o bandit.json || true
           bandit -r . -x ./.git --severity-level medium -f txt | tee bandit_output.txt || true
           cat bandit_output.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+
+          # Security gate: fail if 1+ high or 1+ medium
+          HIGH=$(cat bandit.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(sum(1 for r in d.get('results',[]) if r['issue_severity']=='HIGH'))")
+          MEDIUM=$(cat bandit.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(sum(1 for r in d.get('results',[]) if r['issue_severity']=='MEDIUM'))")
+          echo "High: $HIGH, Medium: $MEDIUM"
+          if [ "$HIGH" -ge 1 ] || [ "$MEDIUM" -ge 1 ]; then
+            echo "Security gate failed: High=$HIGH, Medium=$MEDIUM"
+            exit 1
+          fi
 
       - name: Run Trivy vulnerability scanner
         id: trivy
