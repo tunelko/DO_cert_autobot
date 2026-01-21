@@ -1,10 +1,35 @@
 import os
 import subprocess
+import sys
+import shutil
 import requests
 import dns.resolver
 import OpenSSL
 from datetime import datetime
 import glob
+
+
+def check_prerequisites():
+    """Check that all prerequisites are met before running."""
+    errors = []
+
+    if sys.version_info < (3, 0):
+        errors.append("Python 3.x is required")
+
+    if not shutil.which("certbot"):
+        errors.append("certbot is not installed")
+
+    if not shutil.which("jq"):
+        errors.append("jq is not installed")
+
+    if not os.getenv("DIGITALOCEAN_API_TOKEN"):
+        errors.append("DIGITALOCEAN_API_TOKEN environment variable is not set")
+
+    if errors:
+        print("Missing prerequisites:")
+        for err in errors:
+            print(f"  - {err}")
+        sys.exit(1)
 
 
 def get_env_var(var_name):
@@ -127,6 +152,8 @@ def get_certificate_expiry_days(domain):
 
 
 def main():
+    check_prerequisites()
+
     try:
         # Step 1: Get the API token from an environment variable
         api_token = get_env_var("DIGITALOCEAN_API_TOKEN")
