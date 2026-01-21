@@ -147,17 +147,19 @@ def check_dns_propagation(domain):
 
 def finalize_certbot(domain, script_dir, provider_name, force_renewal=False):
     """Run certbot to finalize the certificate issuance."""
-    hooks_dir = os.path.join(script_dir, "hooks", provider_name)
-    if not os.path.exists(hooks_dir):
-        hooks_dir = script_dir
+    # Use Python hooks (generic, work with all providers)
+    auth_hook = os.path.join(script_dir, "auth-hook.py")
+    cleanup_hook = os.path.join(script_dir, "cleanup-hook.py")
 
-    auth_hook = os.path.join(hooks_dir, "auth-hook.sh")
-    cleanup_hook = os.path.join(hooks_dir, "cleanup-hook.sh")
-
+    # Fallback to shell hooks if Python hooks don't exist
     if not os.path.exists(auth_hook):
         auth_hook = os.path.join(script_dir, "auth-hook.sh")
     if not os.path.exists(cleanup_hook):
         cleanup_hook = os.path.join(script_dir, "cleanup-hook.sh")
+
+    # Set DNS_PROVIDER env var for hooks
+    env = os.environ.copy()
+    env["DNS_PROVIDER"] = provider_name
 
     certbot_cmd = [
         "certbot", "certonly", "--manual", "--preferred-challenges=dns",
@@ -170,7 +172,7 @@ def finalize_certbot(domain, script_dir, provider_name, force_renewal=False):
         certbot_cmd.append("--force-renewal")
 
     print(f"Executing command: {' '.join(certbot_cmd)}")
-    result = subprocess.run(certbot_cmd, check=True)
+    result = subprocess.run(certbot_cmd, check=True, env=env)
     return result.returncode == 0
 
 
