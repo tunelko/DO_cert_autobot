@@ -68,23 +68,38 @@ jobs:
           cat bandit_output.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-          # Security gate: fail if 1+ high or 1+ medium
+          # Security gate: fail if 1+ critical, high or medium
+          CRITICAL=$(cat bandit.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(sum(1 for r in d.get('results',[]) if r['issue_severity']=='CRITICAL'))")
           HIGH=$(cat bandit.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(sum(1 for r in d.get('results',[]) if r['issue_severity']=='HIGH'))")
           MEDIUM=$(cat bandit.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(sum(1 for r in d.get('results',[]) if r['issue_severity']=='MEDIUM'))")
-          echo "High: $HIGH, Medium: $MEDIUM"
-          if [ "$HIGH" -ge 1 ] || [ "$MEDIUM" -ge 1 ]; then
-            echo "Security gate failed: High=$HIGH, Medium=$MEDIUM"
+          echo "Critical: $CRITICAL, High: $HIGH, Medium: $MEDIUM"
+          if [ "$CRITICAL" -ge 1 ] || [ "$HIGH" -ge 1 ] || [ "$MEDIUM" -ge 1 ]; then
+            echo "Security gate FAILED: Critical=$CRITICAL, High=$HIGH, Medium=$MEDIUM"
             exit 1
           fi
+          echo "Security gate PASSED"
 
       - name: Run Trivy vulnerability scanner
         id: trivy
         run: |
           echo "## Trivy Vulnerability Scan" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          docker run --rm -v $(pwd):/src aquasec/trivy fs /src --severity CRITICAL,HIGH 2>&1 | tee trivy_output.txt || true
+          docker run --rm -v $(pwd):/src aquasec/trivy fs /src --severity CRITICAL,HIGH,MEDIUM -f json -o /src/trivy.json 2>&1 || true
+          docker run --rm -v $(pwd):/src aquasec/trivy fs /src --severity CRITICAL,HIGH,MEDIUM 2>&1 | tee trivy_output.txt || true
           cat trivy_output.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+
+          # Security gate for Trivy
+          if [ -f trivy.json ]; then
+            TRIVY_CRITICAL=$(cat trivy.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(sum(len(r.get('Vulnerabilities',[])) for r in d.get('Results',[]) if r.get('Vulnerabilities') for v in r['Vulnerabilities'] if v.get('Severity')=='CRITICAL'))" 2>/dev/null || echo 0)
+            TRIVY_HIGH=$(cat trivy.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(sum(1 for r in d.get('Results',[]) if r.get('Vulnerabilities') for v in r['Vulnerabilities'] if v.get('Severity')=='HIGH'))" 2>/dev/null || echo 0)
+            echo "Trivy - Critical: $TRIVY_CRITICAL, High: $TRIVY_HIGH"
+            if [ "$TRIVY_CRITICAL" -ge 1 ] || [ "$TRIVY_HIGH" -ge 1 ]; then
+              echo "Trivy security gate FAILED"
+              exit 1
+            fi
+          fi
+          echo "Trivy security gate PASSED"
 
       - name: Summary
         run: |
