@@ -4,24 +4,30 @@ import sys
 import shutil
 import argparse
 import re
-import requests
 import dns.resolver
 import OpenSSL
 from datetime import datetime
 import glob
 
+from providers import get_provider, list_providers
+
 
 def parse_args():
     """Parse command line arguments."""
+    available_providers = ", ".join(list_providers())
     parser = argparse.ArgumentParser(
-        description="Automated SSL/TLS certificate management with Certbot and DigitalOcean DNS",
+        description="Automated SSL/TLS certificate management with Certbot and DNS providers",
         epilog="Examples:\n"
                "  %(prog)s --action renew --domain example.com --subdomain www\n"
                "  %(prog)s --action renew --domain example.com  # root domain\n"
                "  %(prog)s --action revoke --domain www.example.com\n"
-               "  %(prog)s --action expiry --domain example.com\n",
+               "  %(prog)s --action expiry --domain example.com\n"
+               "  %(prog)s --provider cloudflare --action renew --domain example.com\n"
+               f"\nAvailable providers: {available_providers}\n",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    parser.add_argument("--provider", type=str, default="digitalocean",
+                        help=f"DNS provider ({available_providers}). Default: digitalocean")
     parser.add_argument("--action", choices=["renew", "revoke", "expiry"],
                         help="Action to perform: renew, revoke, or expiry check")
     parser.add_argument("--domain", type=str,
@@ -51,18 +57,7 @@ def validate_subdomain(subdomain):
     return True
 
 
-def check_subdomain_exists(api_token, domain, subdomain):
-    """Check if subdomain has an A record in DigitalOcean DNS."""
-    if not subdomain:
-        return True
-    records = fetch_domain_records(api_token, domain)
-    for rec in records:
-        if rec['name'] == subdomain and rec['type'] == 'A':
-            return True
-    return False
-
-
-def validate_args(args, valid_domains):
+def validate_args(args, valid_domains, provider_name):
     """Validate CLI arguments."""
     if args.action and not args.domain:
         print("Error: --domain is required when --action is specified")
@@ -71,7 +66,7 @@ def validate_args(args, valid_domains):
     if args.domain:
         validate_domain(args.domain)
         if args.domain not in valid_domains:
-            print(f"Error: Domain '{args.domain}' not found in DigitalOcean account")
+            print(f"Error: Domain '{args.domain}' not found in {provider_name} account")
             print(f"Available domains: {', '.join(valid_domains)}")
             sys.exit(1)
 
@@ -79,7 +74,7 @@ def validate_args(args, valid_domains):
         validate_subdomain(args.subdomain)
 
 
-def check_prerequisites(interactive=True):
+def check_prerequisites(provider_class, interactive=True):
     """Check that all prerequisites are met before running."""
     if sys.version_info < (3, 0):
         print("Error: Python 3.x is required")
@@ -107,50 +102,17 @@ def check_prerequisites(interactive=True):
             print("Error: jq is not installed")
             sys.exit(1)
 
-    if not os.getenv("DIGITALOCEAN_API_TOKEN"):
+    token_env = provider_class.env_token_name
+    if not os.getenv(token_env):
         if interactive:
-            token = input("DIGITALOCEAN_API_TOKEN not set. Enter token: ")
+            token = input(f"{token_env} not set. Enter token: ")
             if token:
-                os.environ["DIGITALOCEAN_API_TOKEN"] = token
+                os.environ[token_env] = token
             else:
                 sys.exit(1)
         else:
-            print("Error: DIGITALOCEAN_API_TOKEN environment variable is not set")
+            print(f"Error: {token_env} environment variable is not set")
             sys.exit(1)
-
-
-def get_env_var(var_name):
-    """Get an environment variable or raise an error if it doesn't exist."""
-    value = os.getenv(var_name)
-    if not value:
-        raise ValueError(f"Environment variable {var_name} is not set.")
-    return value
-
-
-def fetch_domains(api_token):
-    """Fetch the list of domains from DigitalOcean."""
-    url = "https://api.digitalocean.com/v2/domains"
-    headers = {
-        "Authorization": f"Bearer {api_token}",
-    }
-
-    print(f"Executing API request: GET {url}")
-    response = requests.get(url, headers=headers, timeout=30)
-    response.raise_for_status()
-    return response.json()["domains"]
-
-
-def fetch_domain_records(api_token, domain_name):
-    """Fetch the DNS records of a specific domain from DigitalOcean."""
-    url = f"https://api.digitalocean.com/v2/domains/{domain_name}/records"
-    headers = {
-        "Authorization": f"Bearer {api_token}",
-    }
-
-    print(f"Executing API request: GET {url}")
-    response = requests.get(url, headers=headers, timeout=30)
-    response.raise_for_status()
-    return response.json()["domain_records"]
 
 
 def get_user_selection(options, prompt="Select an option:", allow_skip=False):
@@ -183,13 +145,25 @@ def check_dns_propagation(domain):
     return False
 
 
-def finalize_certbot(domain, script_dir, force_renewal=False):
+def finalize_certbot(domain, script_dir, provider_name, force_renewal=False):
     """Run certbot to finalize the certificate issuance."""
+    hooks_dir = os.path.join(script_dir, "hooks", provider_name)
+    if not os.path.exists(hooks_dir):
+        hooks_dir = script_dir
+
+    auth_hook = os.path.join(hooks_dir, "auth-hook.sh")
+    cleanup_hook = os.path.join(hooks_dir, "cleanup-hook.sh")
+
+    if not os.path.exists(auth_hook):
+        auth_hook = os.path.join(script_dir, "auth-hook.sh")
+    if not os.path.exists(cleanup_hook):
+        cleanup_hook = os.path.join(script_dir, "cleanup-hook.sh")
+
     certbot_cmd = [
         "certbot", "certonly", "--manual", "--preferred-challenges=dns",
         "--manual-public-ip-logging-ok", "-d", domain,
-        "--manual-auth-hook", os.path.join(script_dir, "auth-hook.sh"),
-        "--manual-cleanup-hook", os.path.join(script_dir, "cleanup-hook.sh"),
+        "--manual-auth-hook", auth_hook,
+        "--manual-cleanup-hook", cleanup_hook,
         "--non-interactive"
     ]
     if force_renewal:
@@ -216,8 +190,7 @@ def revoke_certbot_certificate(domain):
 
 
 def get_certificate_expiry_days(domain):
-    """Get the number of days left before the certificate expires for the domain and its subdomains."""
-    # Search for certificate directories that match the domain pattern
+    """Get the number of days left before the certificate expires."""
     cert_paths = glob.glob(f"/etc/letsencrypt/live/{domain}*")
     if not cert_paths:
         print(f"Certificate for domain {domain} not found.")
@@ -238,19 +211,19 @@ def get_certificate_expiry_days(domain):
             print(f"An error occurred while checking certificate expiry for {cert_path}: {e}")
 
 
-def run_cli_mode(args, api_token, script_dir, domain_names):
+def run_cli_mode(args, provider, script_dir, domain_names):
     """Run in non-interactive CLI mode."""
-    validate_args(args, domain_names)
+    validate_args(args, domain_names, provider.name)
 
     if args.action == "renew":
         full_domain = f"{args.subdomain}.{args.domain}" if args.subdomain else args.domain
         print(f"Renewing certificate for: {full_domain}")
 
-        if args.subdomain and not check_subdomain_exists(api_token, args.domain, args.subdomain):
+        if args.subdomain and not provider.check_subdomain_exists(args.domain, args.subdomain):
             print(f"WARNING: Subdomain '{args.subdomain}' has no A record in {args.domain}")
             print("         Certificate will be created but subdomain won't resolve.")
 
-        if not finalize_certbot(full_domain, script_dir, force_renewal=True):
+        if not finalize_certbot(full_domain, script_dir, provider.name, force_renewal=True):
             print("Certbot validation failed.")
             sys.exit(1)
         print("Certificate renewed successfully.")
@@ -265,7 +238,7 @@ def run_cli_mode(args, api_token, script_dir, domain_names):
         get_certificate_expiry_days(args.domain)
 
 
-def run_interactive_mode(api_token, script_dir, domain_names):
+def run_interactive_mode(provider, script_dir, domain_names):
     """Run in interactive mode."""
     action = get_user_selection(
         ["Issue a new certificate", "Revoke an existing certificate", "Check certificate expiry"],
@@ -283,7 +256,7 @@ def run_interactive_mode(api_token, script_dir, domain_names):
 
         if record_action == "Overwrite an existing record":
             print(f"Fetching DNS records for {selected_domain}...")
-            domain_records = fetch_domain_records(api_token, selected_domain)
+            domain_records = provider.fetch_domain_records(selected_domain)
             record_names = [f"{rec['name']} ({rec['type']})" for rec in domain_records]
             selected_record = get_user_selection(record_names, "Select a record to overwrite:")
             record_data = domain_records[record_names.index(selected_record)]
@@ -299,11 +272,11 @@ def run_interactive_mode(api_token, script_dir, domain_names):
         print("Running Certbot to manage DNS challenge and certificate issuance...")
         full_domain = f"{subdomain}.{selected_domain}" if subdomain else selected_domain
 
-        if subdomain and not check_subdomain_exists(api_token, selected_domain, subdomain):
+        if subdomain and not provider.check_subdomain_exists(selected_domain, subdomain):
             print(f"WARNING: Subdomain '{subdomain}' has no A record in {selected_domain}")
             print("         Certificate will be created but subdomain won't resolve.")
 
-        if not finalize_certbot(full_domain, script_dir, force_renewal=True):
+        if not finalize_certbot(full_domain, script_dir, provider.name, force_renewal=True):
             print("Certbot validation failed.")
             return
 
@@ -320,20 +293,27 @@ def main():
     args = parse_args()
     interactive = not args.action
 
-    check_prerequisites(interactive=interactive)
+    try:
+        provider_class = get_provider(args.provider)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+    check_prerequisites(provider_class, interactive=interactive)
 
     try:
-        api_token = get_env_var("DIGITALOCEAN_API_TOKEN")
+        api_token = os.getenv(provider_class.env_token_name)
+        provider = provider_class(api_token)
         script_dir = os.path.dirname(os.path.abspath(__file__))
 
-        print("Fetching domains from DigitalOcean...")
-        domains = fetch_domains(api_token)
-        domain_names = [domain["name"] for domain in domains]
+        print(f"Using provider: {provider.name}")
+        print("Fetching domains...")
+        domain_names = provider.fetch_domains()
 
         if interactive:
-            run_interactive_mode(api_token, script_dir, domain_names)
+            run_interactive_mode(provider, script_dir, domain_names)
         else:
-            run_cli_mode(args, api_token, script_dir, domain_names)
+            run_cli_mode(args, provider, script_dir, domain_names)
 
     except subprocess.CalledProcessError as e:
         print(f"An error occurred: {e.stderr}")

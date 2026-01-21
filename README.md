@@ -104,11 +104,40 @@ python3 certbot_auto.py --action expiry --domain example.com
 5. **Force Renewal Option**:
    - If required, you can force a certificate renewal even if the existing certificate is not yet due for renewal.
 
-## Scripts 
+## Scripts
 
 - **`certbot_auto.py`**: Main script that manages the entire certificate creation/renewal process.
-- **`auth-hook.sh`**: Hook script that creates the necessary DNS TXT record using the DigitalOcean API during the Certbot DNS-01 challenge.
+- **`auth-hook.sh`**: Hook script that creates the necessary DNS TXT record during the Certbot DNS-01 challenge.
 - **`cleanup-hook.sh`**: Hook script that cleans up the DNS TXT record after the certificate issuance is complete.
+
+## Provider Plugin System
+
+The tool supports multiple DNS providers through a plugin system. Currently available:
+
+- **digitalocean** (default)
+
+### Adding a New Provider
+
+1. Copy `providers/template.py` to `providers/yourprovider.py`
+2. Implement all abstract methods:
+   - `fetch_domains()` - List domains from provider
+   - `fetch_domain_records(domain)` - List DNS records
+   - `create_txt_record(domain, name, value, ttl)` - Create TXT record
+   - `delete_txt_record(domain, record_id)` - Delete TXT record
+3. Register in `providers/__init__.py`:
+   ```python
+   from .yourprovider import YourProviderProvider
+   PROVIDERS["yourprovider"] = YourProviderProvider
+   ```
+4. Create hooks in `hooks/yourprovider/` (optional, falls back to default hooks)
+
+### Using a Different Provider
+
+```bash
+python3 certbot_auto.py --provider yourprovider --action renew --domain example.com
+```
+
+Set the appropriate environment variable for your provider (e.g., `YOURPROVIDER_API_TOKEN`).
 
 ## Example output 
 
