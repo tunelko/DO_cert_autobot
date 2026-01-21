@@ -11,25 +11,30 @@ import glob
 
 def check_prerequisites():
     """Check that all prerequisites are met before running."""
-    errors = []
-
     if sys.version_info < (3, 0):
-        errors.append("Python 3.x is required")
+        print("Error: Python 3.x is required")
+        sys.exit(1)
 
     if not shutil.which("certbot"):
-        errors.append("certbot is not installed")
+        answer = input("certbot is not installed. Install it? [y/N]: ")
+        if answer.lower() == 'y':
+            subprocess.run(["sudo", "apt", "install", "-y", "certbot"], check=True)
+        else:
+            sys.exit(1)
 
     if not shutil.which("jq"):
-        errors.append("jq is not installed")
+        answer = input("jq is not installed. Install it? [y/N]: ")
+        if answer.lower() == 'y':
+            subprocess.run(["sudo", "apt", "install", "-y", "jq"], check=True)
+        else:
+            sys.exit(1)
 
     if not os.getenv("DIGITALOCEAN_API_TOKEN"):
-        errors.append("DIGITALOCEAN_API_TOKEN environment variable is not set")
-
-    if errors:
-        print("Missing prerequisites:")
-        for err in errors:
-            print(f"  - {err}")
-        sys.exit(1)
+        token = input("DIGITALOCEAN_API_TOKEN not set. Enter token: ")
+        if token:
+            os.environ["DIGITALOCEAN_API_TOKEN"] = token
+        else:
+            sys.exit(1)
 
 
 def get_env_var(var_name):
