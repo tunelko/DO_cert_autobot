@@ -107,8 +107,10 @@ python3 certbot_auto.py --action expiry --domain example.com
 ## Scripts
 
 - **`certbot_auto.py`**: Main script that manages the entire certificate creation/renewal process.
-- **`auth-hook.sh`**: Hook script that creates the necessary DNS TXT record during the Certbot DNS-01 challenge.
-- **`cleanup-hook.sh`**: Hook script that cleans up the DNS TXT record after the certificate issuance is complete.
+- **`auth-hook.py`**: Generic Python hook that creates DNS TXT records (works with all providers).
+- **`cleanup-hook.py`**: Generic Python hook that cleans up DNS TXT records (works with all providers).
+- **`auth-hook.sh`**: Legacy shell hook for DigitalOcean (fallback).
+- **`cleanup-hook.sh`**: Legacy shell hook for DigitalOcean (fallback).
 
 ## Provider Plugin System
 
@@ -173,18 +175,11 @@ export CLOUDFLARE_API_TOKEN="your_token"
 python3 certbot_auto.py --provider cloudflare --action renew --domain example.com
 ```
 
-#### Optional: Custom hooks
+#### Note on Hooks
 
-Create provider-specific hooks in `hooks/yourprovider/`:
+The Python hooks (`auth-hook.py`, `cleanup-hook.py`) automatically work with any registered provider. They use the `DNS_PROVIDER` environment variable set by the main script.
 
-```
-hooks/
-  cloudflare/
-    auth-hook.sh
-    cleanup-hook.sh
-```
-
-If not present, the default hooks will be used.
+No custom hooks needed - just implement your provider and the hooks will use it automatically.
 
 ## Example output 
 
