@@ -51,6 +51,17 @@ def validate_subdomain(subdomain):
     return True
 
 
+def check_subdomain_exists(api_token, domain, subdomain):
+    """Check if subdomain has an A record in DigitalOcean DNS."""
+    if not subdomain:
+        return True
+    records = fetch_domain_records(api_token, domain)
+    for rec in records:
+        if rec['name'] == subdomain and rec['type'] == 'A':
+            return True
+    return False
+
+
 def validate_args(args, valid_domains):
     """Validate CLI arguments."""
     if args.action and not args.domain:
@@ -234,6 +245,11 @@ def run_cli_mode(args, api_token, script_dir, domain_names):
     if args.action == "renew":
         full_domain = f"{args.subdomain}.{args.domain}" if args.subdomain else args.domain
         print(f"Renewing certificate for: {full_domain}")
+
+        if args.subdomain and not check_subdomain_exists(api_token, args.domain, args.subdomain):
+            print(f"WARNING: Subdomain '{args.subdomain}' has no A record in {args.domain}")
+            print("         Certificate will be created but subdomain won't resolve.")
+
         if not finalize_certbot(full_domain, script_dir, force_renewal=True):
             print("Certbot validation failed.")
             sys.exit(1)
@@ -282,6 +298,10 @@ def run_interactive_mode(api_token, script_dir, domain_names):
 
         print("Running Certbot to manage DNS challenge and certificate issuance...")
         full_domain = f"{subdomain}.{selected_domain}" if subdomain else selected_domain
+
+        if subdomain and not check_subdomain_exists(api_token, selected_domain, subdomain):
+            print(f"WARNING: Subdomain '{subdomain}' has no A record in {selected_domain}")
+            print("         Certificate will be created but subdomain won't resolve.")
 
         if not finalize_certbot(full_domain, script_dir, force_renewal=True):
             print("Certbot validation failed.")
