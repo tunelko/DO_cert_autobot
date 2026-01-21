@@ -50,11 +50,46 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'table'
-          exit-code: '0'
-          severity: 'CRITICAL,HIGH'
+          python-version: '3.11'
+
+      - name: Install Bandit
+        run: pip install bandit
+
+      - name: Run Bandit security scan
+        id: bandit
+        run: |
+          echo "## Bandit Security Scan" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          bandit -r . -x ./.git --severity-level medium -f txt | tee bandit_output.txt || true
+          cat bandit_output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Run Trivy vulnerability scanner
+        id: trivy
+        run: |
+          echo "## Trivy Vulnerability Scan" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          docker run --rm -v $(pwd):/src aquasec/trivy fs /src --severity CRITICAL,HIGH 2>&1 | tee trivy_output.txt || true
+          cat trivy_output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Summary
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "## Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          if grep -q "No issues identified" bandit_output.txt; then
+            echo "| Bandit (Python SAST) | PASS |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Bandit (Python SAST) | CHECK |" >> $GITHUB_STEP_SUMMARY
+          fi
+          if grep -q "Total: 0" trivy_output.txt || grep -q "No issues detected" trivy_output.txt; then
+            echo "| Trivy (Vulnerabilities) | PASS |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Trivy (Vulnerabilities) | CHECK |" >> $GITHUB_STEP_SUMMARY
+          fi
