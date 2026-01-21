@@ -53,7 +53,7 @@ def fetch_domains(api_token):
     }
 
     print(f"Executing API request: GET {url}")
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, timeout=30)
     response.raise_for_status()
     return response.json()["domains"]
 
@@ -66,7 +66,7 @@ def fetch_domain_records(api_token, domain_name):
     }
 
     print(f"Executing API request: GET {url}")
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, timeout=30)
     response.raise_for_status()
     return response.json()["domain_records"]
 
