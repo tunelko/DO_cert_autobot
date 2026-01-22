@@ -33,10 +33,10 @@
       export DIGITALOCEAN_API_TOKEN="your_digital_ocean_api_token"
       ```
 
-3. **Make the scripts executable**:
+3. **Make the hooks executable**:
     ```bash
-    chmod +x auth-hook.sh
-    chmod +x cleanup-hook.sh
+    chmod +x auth-hook.py
+    chmod +x cleanup-hook.py
     ```
 
 ## Usage
@@ -107,10 +107,8 @@ python3 certbot_auto.py --action expiry --domain example.com
 ## Scripts
 
 - **`certbot_auto.py`**: Main script that manages the entire certificate creation/renewal process.
-- **`auth-hook.py`**: Generic Python hook that creates DNS TXT records (works with all providers).
-- **`cleanup-hook.py`**: Generic Python hook that cleans up DNS TXT records (works with all providers).
-- **`auth-hook.sh`**: Legacy shell hook for DigitalOcean (fallback).
-- **`cleanup-hook.sh`**: Legacy shell hook for DigitalOcean (fallback).
+- **`auth-hook.py`**: Hook that creates DNS TXT records for DNS-01 challenge (works with all providers).
+- **`cleanup-hook.py`**: Hook that cleans up DNS TXT records after validation (works with all providers).
 
 ## Provider Plugin System
 
