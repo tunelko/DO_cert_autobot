@@ -28,20 +28,12 @@ jobs:
         run: |
           flake8 certbot_auto.py --max-line-length=120 --ignore=E501,W503
 
-      - name: Lint shell scripts with shellcheck
-        uses: ludeeus/action-shellcheck@master
-        with:
-          scandir: '.'
-          format: tty
-
       - name: Validate Python syntax
         run: |
           python -m py_compile certbot_auto.py
-
-      - name: Check shell script syntax
-        run: |
-          bash -n auth-hook.sh
-          bash -n cleanup-hook.sh
+          python -m py_compile auth-hook.py
+          python -m py_compile cleanup-hook.py
+          python -m py_compile providers/*.py
 
   security-scan:
     runs-on: ubuntu-latest
